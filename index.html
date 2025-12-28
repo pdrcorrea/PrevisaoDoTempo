@@ -28,6 +28,9 @@
       --dayGlow2: rgba(87,184,231,.14);
       --washTop:  rgba(7,22,36,.20);
       --washBot:  rgba(7,22,36,.42);
+
+      /* Cor sutil do ícone do clima (default) */
+      --wxColor: rgba(255,255,255,.92);
     }
 
     *{ box-sizing:border-box; }
@@ -96,6 +99,7 @@
       flex-wrap:wrap;
     }
 
+    /* Badge do ícone (corrigido para nunca vazar) */
     .icon{
       width: 74px; height: 74px;
       display:grid; place-items:center;
@@ -104,8 +108,17 @@
       border: 1px solid rgba(255,255,255,.32);
       box-shadow: 0 14px 36px rgba(0,0,0,.25);
       flex: 0 0 auto;
+      overflow:hidden;
     }
-    .icon .material-icons-outlined{ font-size: 40px; color:#fff; }
+    .icon .material-icons-outlined{
+      font-size: 40px;
+      line-height: 1;
+      display:block;
+      width: 1em; height: 1em;
+      color: var(--wxColor);
+      filter: drop-shadow(0 6px 14px rgba(0,0,0,.18));
+      transition: color 600ms ease, filter 600ms ease;
+    }
 
     .titleBlock{ flex: 1 1 360px; min-width: 280px; }
     .kicker{
@@ -525,23 +538,46 @@
     const daysEl = document.getElementById("days");
     const rangeEl = document.getElementById("range");
 
-    /* ========= Helpers clima (Open-Meteo weathercode) ========= */
+    /* ========= Helpers clima (Open-Meteo weathercode) + cor sutil ========= */
     function wxFromCode(code){
-      if (code === 0)  return { icon:"wb_sunny", desc:"CÉU LIMPO" };
-      if (code === 1 || code === 2) return { icon:"partly_cloudy_day", desc:"PARCIALMENTE NUBLADO" };
-      if (code === 3)  return { icon:"cloud", desc:"NUBLADO" };
-      if (code === 45 || code === 48) return { icon:"foggy", desc:"NEBLINA" };
-      if (code === 51 || code === 53 || code === 55) return { icon:"grain", desc:"GAROA" };
-      if (code === 56 || code === 57) return { icon:"grain", desc:"GAROA CONGELANTE" };
-      if (code === 61 || code === 63 || code === 65) return { icon:"rainy", desc:"CHUVA" };
-      if (code === 66 || code === 67) return { icon:"rainy", desc:"CHUVA CONGELANTE" };
-      if (code === 71 || code === 73 || code === 75) return { icon:"ac_unit", desc:"NEVE" };
-      if (code === 77) return { icon:"ac_unit", desc:"GRÃOS DE NEVE" };
-      if (code === 80 || code === 81 || code === 82) return { icon:"rainy", desc:"PANCADAS" };
-      if (code === 85 || code === 86) return { icon:"ac_unit", desc:"NEVE (PANCADAS)" };
-      if (code === 95) return { icon:"thunderstorm", desc:"TEMPESTADE" };
-      if (code === 96 || code === 99) return { icon:"thunderstorm", desc:"TEMPESTADE FORTE" };
-      return { icon:"cloud", desc:"CLIMA" };
+      // Ícones garantidos no Material Icons Outlined + cores discretas (sem cansar)
+      // Observação: cores são RGBA suaves para manter o padrão PontoView
+
+      // 0: céu limpo
+      if (code === 0) return { icon:"wb_sunny", desc:"CÉU LIMPO", color:"rgba(255, 214, 102, .95)" };
+
+      // 1-2: parcialmente nublado | 3: nublado
+      if (code === 1 || code === 2) return { icon:"wb_cloudy", desc:"PARCIALMENTE NUBLADO", color:"rgba(205, 230, 255, .92)" };
+      if (code === 3) return { icon:"cloud", desc:"NUBLADO", color:"rgba(205, 230, 255, .88)" };
+
+      // 45-48: neblina
+      if (code === 45 || code === 48) return { icon:"blur_on", desc:"NEBLINA", color:"rgba(210, 220, 235, .86)" };
+
+      // 51-55: garoa / chuvisco
+      if (code === 51 || code === 53 || code === 55) return { icon:"grain", desc:"GAROA", color:"rgba(120, 205, 255, .92)" };
+
+      // 56-57: garoa congelante
+      if (code === 56 || code === 57) return { icon:"ac_unit", desc:"GAROA CONGELANTE", color:"rgba(195, 225, 255, .92)" };
+
+      // 61-65: chuva
+      if (code === 61 || code === 63 || code === 65) return { icon:"umbrella", desc:"CHUVA", color:"rgba(96, 190, 255, .92)" };
+
+      // 66-67: chuva congelante
+      if (code === 66 || code === 67) return { icon:"ac_unit", desc:"CHUVA CONGELANTE", color:"rgba(195, 225, 255, .92)" };
+
+      // 71-77: neve
+      if (code === 71 || code === 73 || code === 75 || code === 77) return { icon:"ac_unit", desc:"NEVE", color:"rgba(220, 240, 255, .92)" };
+
+      // 80-82: pancadas
+      if (code === 80 || code === 81 || code === 82) return { icon:"water_drop", desc:"PANCADAS", color:"rgba(90, 200, 255, .92)" };
+
+      // 85-86: neve (pancadas)
+      if (code === 85 || code === 86) return { icon:"ac_unit", desc:"NEVE (PANCADAS)", color:"rgba(220, 240, 255, .92)" };
+
+      // 95-99: tempestade
+      if (code === 95 || code === 96 || code === 99) return { icon:"thunderstorm", desc:"TEMPESTADE", color:"rgba(170, 200, 255, .92)" };
+
+      return { icon:"cloud", desc:"CLIMA", color:"rgba(255,255,255,.92)" };
     }
 
     function fmtDayLabel(isoDate){
@@ -607,6 +643,10 @@
       updatedEl.textContent = `ATUALIZADO • ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
     }
 
+    function setWxTheme(color){
+      document.documentElement.style.setProperty("--wxColor", color);
+    }
+
     async function refresh(){
       try{
         placeEl.textContent = "LOCALIZANDO…";
@@ -615,6 +655,7 @@
 
         if (loc.lat == null || loc.lon == null){
           wxIconEl.textContent = "cloud";
+          setWxTheme("rgba(255,255,255,.92)");
           descNowEl.textContent = "SEM COORDENADAS";
           tempNowEl.textContent = "--°";
           feelsEl.textContent = "—";
@@ -634,6 +675,7 @@
 
         wxIconEl.textContent = w.icon;
         descNowEl.textContent = w.desc;
+        setWxTheme(w.color);
 
         const t = Number(cur.temperature_2m);
         tempNowEl.textContent = Number.isFinite(t) ? `${Math.round(t)}°` : "--°";
@@ -655,6 +697,7 @@
       }catch(e){
         placeEl.textContent = "SEM CONEXÃO";
         wxIconEl.textContent = "cloud_off";
+        setWxTheme("rgba(255,255,255,.78)");
         descNowEl.textContent = "NÃO FOI POSSÍVEL ATUALIZAR";
         setUpdated();
         console.warn(e);
