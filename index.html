@@ -45,13 +45,11 @@
         url("assets/bg-blue.png");
       background-size: cover;
       background-position: center;
-
       transition: background 1.6s ease;
     }
 
     .wash{
-      position:fixed;
-      inset:0;
+      position:fixed; inset:0;
       background: linear-gradient(180deg, var(--washTop), var(--washBot));
       z-index:0;
       transition: background 1.6s ease;
@@ -75,7 +73,7 @@
     }
 
     .badge{
-      padding: clamp(26px, 4.2vw, 54px) clamp(22px, 4.8vw, 64px);
+      padding: clamp(22px, 3.8vw, 46px) clamp(18px, 4.2vw, 56px);
       border-radius: var(--r);
       background: linear-gradient(135deg, var(--glass), var(--glass2));
       border: 1px solid var(--stroke);
@@ -88,10 +86,7 @@
       transform: translateY(18px) scale(.975);
       animation: enter 1.2s cubic-bezier(.22,1,.36,1) forwards;
     }
-
-    @keyframes enter{
-      to{ opacity:1; transform: translateY(0) scale(1); }
-    }
+    @keyframes enter{ to{ opacity:1; transform: translateY(0) scale(1);} }
 
     .top{
       display:flex;
@@ -102,10 +97,8 @@
     }
 
     .icon{
-      width: 76px;
-      height: 76px;
-      display:grid;
-      place-items:center;
+      width: 74px; height: 74px;
+      display:grid; place-items:center;
       border-radius: 22px;
       background: rgba(255,255,255,.20);
       border: 1px solid rgba(255,255,255,.32);
@@ -114,10 +107,7 @@
     }
     .icon .material-icons-outlined{ font-size: 40px; color:#fff; }
 
-    .titleBlock{
-      flex: 1 1 360px;
-      min-width: 280px;
-    }
+    .titleBlock{ flex: 1 1 360px; min-width: 280px; }
     .kicker{
       font-size: 14px;
       font-weight: 700;
@@ -142,11 +132,7 @@
     }
     .place .material-icons-outlined{ font-size: 20px; opacity:.95; }
 
-    .clockBox{
-      margin-left:auto;
-      text-align:right;
-      min-width: 240px;
-    }
+    .clockBox{ margin-left:auto; text-align:right; min-width: 240px; }
     .clock{
       font-size: clamp(34px, 3.8vw, 48px);
       font-weight: 700;
@@ -353,7 +339,6 @@
       </div>
 
       <div class="main">
-        <!-- AGORA -->
         <div class="card">
           <div class="nowRow">
             <div>
@@ -387,7 +372,6 @@
           </div>
         </div>
 
-        <!-- PRÓXIMOS DIAS -->
         <div class="card">
           <div class="forecastTitle">
             <span>Próximos dias</span>
@@ -449,6 +433,85 @@
     applyDayMoment();
     setInterval(applyDayMoment, 10 * 60 * 1000);
 
+    /* ========= Localização por IP (robusta / sem permissão) ========= */
+    function fetchWithTimeout(url, opts = {}, timeoutMs = 4500){
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
+    }
+    function normStr(v){
+      if (v == null) return null;
+      const s = String(v).trim();
+      return s ? s : null;
+    }
+    function toNum(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    async function getIpLocationRobust(){
+      const providers = [
+        async () => {
+          const r = await fetchWithTimeout("https://ipwho.is/?lang=pt", { cache:"no-store" });
+          const d = await r.json();
+          if (!d || d.success === false) throw new Error("ipwho.is failed");
+          return {
+            city: normStr(d.city),
+            region: normStr(d.region_code || d.region),
+            country: normStr(d.country_code),
+            lat: toNum(d.latitude),
+            lon: toNum(d.longitude),
+            source: "ipwho.is"
+          };
+        },
+        async () => {
+          const r = await fetchWithTimeout("https://ipapi.co/json/", { cache:"no-store" });
+          const d = await r.json();
+          return {
+            city: normStr(d.city),
+            region: normStr(d.region_code || d.region),
+            country: normStr(d.country_code),
+            lat: toNum(d.latitude),
+            lon: toNum(d.longitude),
+            source: "ipapi.co"
+          };
+        },
+        async () => {
+          const r = await fetchWithTimeout("https://geolocation-db.com/json/", { cache:"no-store" });
+          const d = await r.json();
+          return {
+            city: normStr(d.city),
+            region: normStr(d.state),
+            country: normStr(d.country_code),
+            lat: toNum(d.latitude),
+            lon: toNum(d.longitude),
+            source: "geolocation-db"
+          };
+        }
+      ];
+
+      let lastErr = null;
+      for (const p of providers){
+        try{
+          const loc = await p();
+          if (loc.city || (loc.lat != null && loc.lon != null)) return loc;
+          lastErr = new Error("provider returned empty data");
+        }catch(e){
+          lastErr = e;
+        }
+      }
+      throw lastErr || new Error("all providers failed");
+    }
+    function formatPlaceUpper(loc){
+      const city = loc.city ? loc.city.toUpperCase() : null;
+      const region = loc.region ? loc.region.toUpperCase() : null;
+      const country = loc.country ? loc.country.toUpperCase() : null;
+
+      if (city && region) return `${city} - ${region}`;
+      if (city && country) return `${city} - ${country}`;
+      if (city) return city;
+      return "LOCAL NÃO IDENTIFICADO";
+    }
+
     /* ========= UI refs ========= */
     const placeEl = document.getElementById("place");
     const wxIconEl = document.getElementById("wxIcon");
@@ -464,30 +527,20 @@
 
     /* ========= Helpers clima (Open-Meteo weathercode) ========= */
     function wxFromCode(code){
-      // Ícones do Material + descrição (PT-BR)
-      // referência: Open-Meteo weather codes (0..99)
       if (code === 0)  return { icon:"wb_sunny", desc:"CÉU LIMPO" };
       if (code === 1 || code === 2) return { icon:"partly_cloudy_day", desc:"PARCIALMENTE NUBLADO" };
       if (code === 3)  return { icon:"cloud", desc:"NUBLADO" };
-
       if (code === 45 || code === 48) return { icon:"foggy", desc:"NEBLINA" };
-
       if (code === 51 || code === 53 || code === 55) return { icon:"grain", desc:"GAROA" };
       if (code === 56 || code === 57) return { icon:"grain", desc:"GAROA CONGELANTE" };
-
       if (code === 61 || code === 63 || code === 65) return { icon:"rainy", desc:"CHUVA" };
       if (code === 66 || code === 67) return { icon:"rainy", desc:"CHUVA CONGELANTE" };
-
       if (code === 71 || code === 73 || code === 75) return { icon:"ac_unit", desc:"NEVE" };
       if (code === 77) return { icon:"ac_unit", desc:"GRÃOS DE NEVE" };
-
       if (code === 80 || code === 81 || code === 82) return { icon:"rainy", desc:"PANCADAS" };
-
       if (code === 85 || code === 86) return { icon:"ac_unit", desc:"NEVE (PANCADAS)" };
-
       if (code === 95) return { icon:"thunderstorm", desc:"TEMPESTADE" };
       if (code === 96 || code === 99) return { icon:"thunderstorm", desc:"TEMPESTADE FORTE" };
-
       return { icon:"cloud", desc:"CLIMA" };
     }
 
@@ -504,19 +557,6 @@
       return `${sTxt} – ${eTxt}`;
     }
 
-    /* ========= Localização por IP (sem permissão) ========= */
-    async function getIpLocation(){
-      const r = await fetch("https://ipapi.co/json/", { cache:"no-store" });
-      const d = await r.json();
-      return {
-        city: d?.city ? String(d.city) : null,
-        region: d?.region_code ? String(d.region_code) : (d?.region ? String(d.region) : null),
-        country: d?.country_code ? String(d.country_code) : null,
-        lat: Number(d?.latitude),
-        lon: Number(d?.longitude),
-      };
-    }
-
     /* ========= Clima (Open-Meteo, sem API key) ========= */
     async function fetchWeather(lat, lon){
       const url = new URL("https://api.open-meteo.com/v1/forecast");
@@ -525,8 +565,8 @@
       url.searchParams.set("timezone", "auto");
       url.searchParams.set("current", "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m");
       url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max");
-      url.searchParams.set("forecast_days", "6"); // hoje + 5
-      const r = await fetch(url.toString(), { cache:"no-store" });
+      url.searchParams.set("forecast_days", "6");
+      const r = await fetchWithTimeout(url.toString(), { cache:"no-store" }, 6500);
       return r.json();
     }
 
@@ -570,19 +610,20 @@
     async function refresh(){
       try{
         placeEl.textContent = "LOCALIZANDO…";
-        const loc = await getIpLocation();
+        const loc = await getIpLocationRobust();
+        placeEl.textContent = formatPlaceUpper(loc);
 
-        const placeTxt =
-          (loc.city && loc.region) ? `${loc.city.toUpperCase()} - ${loc.region.toUpperCase()}` :
-          (loc.city && loc.country) ? `${loc.city.toUpperCase()} - ${loc.country.toUpperCase()}` :
-          (loc.city) ? loc.city.toUpperCase() :
-          "LOCAL NÃO IDENTIFICADO";
-
-        placeEl.textContent = placeTxt;
-
-        if (!Number.isFinite(loc.lat) || !Number.isFinite(loc.lon)){
-          descNowEl.textContent = "SEM LOCALIZAÇÃO";
+        if (loc.lat == null || loc.lon == null){
+          wxIconEl.textContent = "cloud";
+          descNowEl.textContent = "SEM COORDENADAS";
           tempNowEl.textContent = "--°";
+          feelsEl.textContent = "—";
+          windEl.textContent = "—";
+          humidityEl.textContent = "—";
+          rainEl.textContent = "—";
+          rangeEl.textContent = "—";
+          daysEl.innerHTML = "";
+          setUpdated();
           return;
         }
 
@@ -611,8 +652,9 @@
 
         if (data.daily) renderDaily(data.daily);
         setUpdated();
-      } catch (e){
+      }catch(e){
         placeEl.textContent = "SEM CONEXÃO";
+        wxIconEl.textContent = "cloud_off";
         descNowEl.textContent = "NÃO FOI POSSÍVEL ATUALIZAR";
         setUpdated();
         console.warn(e);
@@ -621,7 +663,7 @@
 
     // Boot
     refresh();
-    // Atualiza previsão a cada 20 min (bom para painel)
+    // Atualiza previsão a cada 20 min
     setInterval(refresh, 20 * 60 * 1000);
   </script>
 </body>
